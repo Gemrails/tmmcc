@@ -4,4 +4,4 @@
 v1 :完成对http协议的解码。暂时未输出到zmq.显示消息日志
 
 # 整体架构
-![](./test/jiagou.jpeg)
+![](test/jiagou.jpeg)
