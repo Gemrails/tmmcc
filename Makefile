@@ -1,12 +1,10 @@
-GO_LDFLAGS=-ldflags " -w"
-
 TAG=v1
 PREFIX=barnettzqg/tcm
 Name=tcm
 
 build: ## build the go packages
 	@echo "🐳 $@"
-	@go build -a -installsuffix cgo ${GO_LDFLAGS} .
+	@go build -o tcm ./cmd
 
 image:
 	@echo "🐳 $@"
