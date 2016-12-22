@@ -1,8 +1,8 @@
 package net
 
 import (
+	"strings"
 	"tcm/config"
-	"time"
 
 	"github.com/prometheus/common/log"
 
@@ -13,23 +13,35 @@ import (
 
 //Util 网络抓包工具
 type Util struct {
-	Option *config.PCAPOption
+	Option *config.Option
 }
 
 //Pcap 抓包
 func (n *Util) Pcap() int {
-
-	if handle, err := pcap.OpenLive(n.Option.Device, int32(n.Option.Snaplen), true, n.Option.TimeOut); err != nil {
-		log.With("error", err.Error()).Errorln("PCAP OpenLive Error.")
-		return 1
-	} else if err := handle.SetBPFFilter(n.Option.Expr); err != nil { // optional
-		log.With("error", err.Error()).Errorln("PCAP SetBPFFilter Error.", n.Option.Expr)
-		return 1
-	} else {
-		log.Infoln("Start listen the device ", n.Option.Device)
-		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-		for packet := range packetSource.Packets() {
-			n.handlePacket(packet) // Do something with a packet here.
+	devicestr := n.Option.Device
+	devices := strings.Split(devicestr, ",")
+	for _, device := range devices {
+		if handle, err := pcap.OpenLive(device, int32(n.Option.Snaplen), true, n.Option.TimeOut); err != nil {
+			log.With("error", err.Error()).Errorln("PCAP OpenLive Error.")
+			return 1
+		} else if err := handle.SetBPFFilter(n.Option.Expr); err != nil { // optional
+			log.With("error", err.Error()).Errorln("PCAP SetBPFFilter Error.", n.Option.Expr)
+			return 1
+		} else {
+			log.Infoln("Start listen the device ", device)
+			packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+			go func(close chan struct{}, h *pcap.Handle) {
+				for {
+					select {
+					case packet := <-packetSource.Packets():
+						n.handlePacket(packet) // Do something with a packet here.
+					case <-close:
+						log.Infoln("stop listen the device.")
+						h.Close()
+						return
+					}
+				}
+			}(n.Option.Close, handle)
 		}
 	}
 	return 0
@@ -38,11 +50,12 @@ func (n *Util) Pcap() int {
 func (n *Util) handlePacket(packet gopacket.Packet) {
 	app := packet.ApplicationLayer()
 	if app != nil {
-		log.With("type", app.LayerType().String()).Infoln("Receive a application layer packet")
+		//log.With("type", app.LayerType().String()).Infoln("Receive a application layer packet")
+		//log.Infoln(packet.String())
 		go func() {
 			sd := &SourceData{
 				Source:      app.Payload(),
-				ReceiveDate: time.Now(),
+				ReceiveDate: packet.Metadata().Timestamp,
 			}
 			tran := packet.TransportLayer()
 			if tran != nil {

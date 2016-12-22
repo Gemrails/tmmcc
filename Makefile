@@ -1,6 +1,6 @@
 GO_LDFLAGS=-ldflags " -w"
 
-TAG=dev1221
+TAG=v1
 PREFIX=barnettzqg/tcm
 Name=tcm
 

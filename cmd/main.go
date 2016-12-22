@@ -3,8 +3,13 @@ package main
 import (
 	"flag"
 	"os"
+	"os/signal"
+	"syscall"
 	"tcm/config"
 	"tcm/net"
+	"time"
+
+	"github.com/prometheus/common/log"
 )
 
 func main() {
@@ -13,9 +18,11 @@ func main() {
 		flag.Usage()
 	}
 	if option.Protocol == "http" {
-		stop := make(chan struct{})
-		defer close(stop)
-		net.CreateHTTPManager(stop)
+		err := net.CreateHTTPManager(option)
+		if err != nil {
+			log.With("error", err.Error()).Errorln("create http manager error.")
+			os.Exit(0)
+		}
 	}
 	netUtil := net.Util{
 		Option: option,
@@ -23,4 +30,13 @@ func main() {
 	if r := netUtil.Pcap(); r != 0 {
 		os.Exit(r)
 	}
+	term := make(chan os.Signal)
+	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
+	select {
+	case <-term:
+		log.Warn("Received SIGTERM, exiting gracefully...")
+	}
+	close(option.Close)
+	time.Sleep(time.Second * 4)
+	log.Info("See you next time!")
 }
