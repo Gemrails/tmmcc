@@ -1,2 +1,0 @@
-go build
-sudo ./cmd -i=lo0  "port 1919"

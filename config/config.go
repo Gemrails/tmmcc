@@ -1,3 +1,21 @@
+// RAINBOND, Application Management Platform
+// Copyright (C) 2014-2017 Goodrain Co., Ltd.
+
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version. For any non-GPL usage of Rainbond,
+// one or multiple Commercial Licenses authorized by Goodrain Co., Ltd.
+// must be obtained first.
+
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <http://www.gnu.org/licenses/>.
+
 package config
 
 import (
@@ -18,9 +36,8 @@ var (
 	help     = flag.Bool("h", false, "help")
 	timeout  = flag.Int("t", int(pcap.BlockForever), "timeout")
 	protocol = flag.String("p", "http", "network protocol")
-	//同时发送消息的协程数量
-	sendcount = flag.Int("c", 1, "the number of send zmq")
-	zmqurl    = flag.String("zmq", "127.0.0.1", "zmq server url ")
+	udpIP    = flag.String("server-host", "172.30.42.1", "udp server host ")
+	udpPort  = flag.Int("server-port", 6666, "udp server port ")
 )
 
 //PCAPOption 抓包相关配置
@@ -37,7 +54,8 @@ type PCAPOption struct {
 //Option 主配置
 type Option struct {
 	PCAPOption
-	ZMQURL    string
+	UDPIP     string
+	UDPPort   int
 	SendCount int
 	Close     chan struct{}
 }
@@ -58,8 +76,8 @@ func Flagparse() *Option {
 	}
 	option := &Option{
 		PCAPOption: pcapOption,
-		ZMQURL:     *zmqurl,
-		SendCount:  *sendcount,
+		UDPIP:      *udpIP,
+		UDPPort:    *udpPort,
 	}
 	//过滤语法，同tcpdump
 	expr := ""
@@ -68,6 +86,9 @@ func Flagparse() *Option {
 	}
 	if expr == "" {
 		Port := os.Getenv("PORT")
+		if Port == "" {
+			Port = "5000"
+		}
 		expr = "port " + Port
 	}
 	option.Expr = expr
