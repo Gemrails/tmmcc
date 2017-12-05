@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"tcm/config"
 	"tcm/net"
+	"tcm/server"
 	"time"
 
 	_ "net/http/pprof"
@@ -58,11 +59,21 @@ func main() {
 		os.Exit(r)
 	}
 	go httpListener()
+
+	udpserver := server.UDPServer{
+		ListenerHost: "127.0.0.1",
+		ListenerPort: 6666,
+	}
+	errch := make(chan error, 1)
+	go udpserver.Server(errch)
+
 	term := make(chan os.Signal)
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
 	select {
 	case <-term:
 		log.Warn("Received SIGTERM, exiting gracefully...")
+	case err := <-errch:
+		log.Error(err.Error())
 	}
 	close(option.Close)
 	time.Sleep(time.Second * 4)

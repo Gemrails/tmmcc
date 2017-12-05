@@ -36,7 +36,7 @@ var (
 	help     = flag.Bool("h", false, "help")
 	timeout  = flag.Int("t", int(pcap.BlockForever), "timeout")
 	protocol = flag.String("p", "http", "network protocol")
-	udpIP    = flag.String("server-host", "172.30.42.1", "udp server host ")
+	udpIP    = flag.String("server-host", "127.0.0.1", "udp server host ")
 	udpPort  = flag.Int("server-port", 6666, "udp server port ")
 )
 

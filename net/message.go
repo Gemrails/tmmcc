@@ -40,20 +40,18 @@ type Message interface {
 
 //HTTPMessage http protocol zeromq message
 type HTTPMessage struct {
-	ServiceID     string         `json:"serviceID"`
-	Method        string         `json:"method"`
-	URI           string         `json:"uri"`
-	Protocol      string         `json:"protocol"`
-	UserAgent     string         `json:"userAgent"`
-	Referer       string         `json:"referer"`
-	Cookie        []*http.Cookie `json:"cookie"`
-	ReqTime       time.Time      `json:"reqTime"`
-	Server        string         `json:"server"`
-	StatusCode    int            `json:"statusCode"`
-	ContentLength int            `json:"contentLength"`
-	ResTime       time.Time      `json:"resTime"`
-	RemoteAddr    string         `json:"remoteAddr"`
-	TimeConsum    float64        `json:"timeConsum"`
+	ServiceID     string    `json:"serviceID"`
+	Method        string    `json:"method"`
+	URI           string    `json:"uri"`
+	Protocol      string    `json:"protocol"`
+	UserAgent     string    `json:"userAgent"`
+	ReqTime       time.Time `json:"reqTime"`
+	Server        string    `json:"server"`
+	StatusCode    int       `json:"statusCode"`
+	ContentLength int       `json:"contentLength"`
+	ResTime       time.Time `json:"resTime"`
+	RemoteAddr    string    `json:"remoteAddr"`
+	TimeConsum    float64   `json:"timeConsum"`
 }
 
 //String 返回json格式
@@ -84,8 +82,6 @@ func CreateHTTPMessage(rs *http.Response) *HTTPMessage {
 		Method:        rs.Request.Method,
 		Protocol:      rs.Request.Proto,
 		UserAgent:     rs.Request.UserAgent(),
-		Referer:       rs.Request.Referer(),
-		Cookie:        rs.Request.Cookies(),
 		Server:        rs.Header.Get("Server"),
 		StatusCode:    rs.StatusCode,
 		ContentLength: conv.Int(rs.Header.Get("Content-Length")),

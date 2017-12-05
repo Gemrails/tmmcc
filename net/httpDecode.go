@@ -31,6 +31,7 @@ import (
 	"sync"
 
 	conv "github.com/cstockton/go-conv"
+	cache "github.com/patrickmn/go-cache"
 	"github.com/prometheus/common/log"
 )
 
@@ -94,7 +95,7 @@ func (h *HTTPDecode) Decode(data *SourceData) {
 
 //HTTPManager 监控信息存储
 type HTTPManager struct {
-	requests                   map[string]*http.Request
+	cache                      *cache.Cache
 	MessageChan                chan interface{}
 	RequestsLock, ResponseLock sync.Mutex
 	messageManager             MessageManager
@@ -117,7 +118,7 @@ func CreateHTTPManager(option *config.Option) error {
 			return err
 		}
 		httpmanager = &HTTPManager{
-			requests:       make(map[string]*http.Request, 10),
+			cache:          cache.New(10*time.Second, 1*time.Minute),
 			MessageChan:    make(chan interface{}, 100),
 			messageManager: m,
 		}
@@ -143,17 +144,19 @@ func (m *HTTPManager) handleMessageChan(close chan struct{}) {
 			case *http.Request:
 				request := message.(*http.Request)
 				key := request.Context().Value(mapkey("key")).(string)
-				m.requests[key] = request
+				m.cache.Set(key, request, cache.DefaultExpiration)
 				//log.Infof("Request number:%d", len(m.requests))
 			case ResponseMessage:
 				response := message.(ResponseMessage)
 				key := response.RequestKey
-				if r, ok := m.requests[key]; ok {
-					r = r.WithContext(context.WithValue(r.Context(), mapkey("ResTime"), response.ReceiveTime))
-					response.Response.Request = r
-					delete(m.requests, key)
-					info := CreateHTTPMessage(response.Response)
-					m.messageManager.SendMessage(info)
+				if re, ok := m.cache.Get(key); ok {
+					if r, ok := re.(*http.Request); ok {
+						r = r.WithContext(context.WithValue(r.Context(), mapkey("ResTime"), response.ReceiveTime))
+						response.Response.Request = r
+						m.cache.Delete(key)
+						info := CreateHTTPMessage(response.Response)
+						m.messageManager.SendMessage(info)
+					}
 				} else {
 					log.Warnf("request key %s not found", key)
 					continue
