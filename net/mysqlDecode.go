@@ -33,6 +33,14 @@ import (
 type MysqlDecode struct {
 }
 
+//CreateMysqlDecode CreateMysqlDecode
+func CreateMysqlDecode() *MysqlDecode {
+	var m MysqlDecode
+	parseFormat("#s:#q")
+	rand.Seed(time.Now().UnixNano())
+	return &m
+}
+
 //Decode 解码
 func (h *MysqlDecode) Decode(data *SourceData) {
 	if data.TCP == nil {

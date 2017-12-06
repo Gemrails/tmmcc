@@ -47,7 +47,7 @@ func FindDecode(protol string) Decode {
 	case "http":
 		return &HTTPDecode{}
 	case "mysql":
-		return &MysqlDecode{}
+		return CreateMysqlDecode()
 	default:
 		return nil
 	}
