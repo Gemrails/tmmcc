@@ -106,6 +106,7 @@ if [ ! -z "$GEN" ]; then
   popd
   pushd layers
   go run gen.go | gofmt > iana_ports.go
+  go run gen2.go | gofmt > enums_generated.go
   popd
 fi
 
@@ -151,6 +152,9 @@ gofmt -w gen.go
 go build gen.go
 popd
 pushd tcpassembly
+go test ./...
+popd
+pushd reassembly
 go test ./...
 popd
 pushd layers

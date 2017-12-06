@@ -46,6 +46,8 @@ func FindDecode(protol string) Decode {
 	switch protol {
 	case "http":
 		return &HTTPDecode{}
+	case "mysql":
+		return &MysqlDecode{}
 	default:
 		return nil
 	}

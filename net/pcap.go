@@ -19,6 +19,7 @@
 package net
 
 import (
+	"fmt"
 	"strings"
 	"tcm/config"
 
@@ -47,7 +48,7 @@ func (n *Util) Pcap() int {
 			log.With("error", err.Error()).Errorln("PCAP SetBPFFilter Error.", n.Option.Expr)
 			return 1
 		} else {
-			log.Infoln("Start listen the device ", device)
+			log.Infof("Start listen the device %s %s ", device, n.Option.Expr)
 			packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 			go func(close chan struct{}, h *pcap.Handle) {
 				for {
@@ -66,11 +67,34 @@ func (n *Util) Pcap() int {
 	return 0
 }
 
+var id = 0
+
 func (n *Util) handlePacket(packet gopacket.Packet) {
+	id++
+	fmt.Println(packet.Data())
+	if link := packet.LinkLayer(); link != nil {
+		fmt.Printf("Link:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
+	if link := packet.NetworkLayer(); link != nil {
+		fmt.Printf("NetworkLayer:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
+	if link := packet.TransportLayer(); link != nil {
+		fmt.Printf("Transport:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
+	if link := packet.ApplicationLayer(); link != nil {
+		fmt.Printf("ApplicationLayer:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
+	return
+
 	app := packet.ApplicationLayer()
 	if app != nil {
 		//log.With("type", app.LayerType().String()).Infoln("Receive a application layer packet")
 		//log.Infoln(packet.String())
+		fmt.Println(app.Payload())
 		sd := &SourceData{
 			Source:      app.Payload(),
 			ReceiveDate: packet.Metadata().Timestamp,

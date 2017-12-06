@@ -35,7 +35,8 @@ var (
 	snaplen  = flag.Int("s", 65535, "snaplen")
 	help     = flag.Bool("h", false, "help")
 	timeout  = flag.Int("t", int(pcap.BlockForever), "timeout")
-	protocol = flag.String("p", "http", "network protocol")
+	protocol = flag.String("protocol", "http", "network protocol")
+	expr     = flag.String("expr", "port 5000", "PCAP BPFFilter Rule")
 	udpIP    = flag.String("server-host", "127.0.0.1", "udp server host ")
 	udpPort  = flag.Int("server-port", 6666, "udp server port ")
 )
@@ -73,26 +74,13 @@ func Flagparse() *Option {
 		Help:     *help,
 		TimeOut:  time.Duration(*timeout),
 		Protocol: *protocol,
+		Expr:     *expr,
 	}
 	option := &Option{
 		PCAPOption: pcapOption,
 		UDPIP:      *udpIP,
 		UDPPort:    *udpPort,
 	}
-	//过滤语法，同tcpdump
-	expr := ""
-	if len(flag.Args()) > 0 {
-		expr = flag.Arg(0)
-	}
-	if expr == "" {
-		Port := os.Getenv("PORT")
-		if Port == "" {
-			Port = "5000"
-		}
-		expr = "port " + Port
-	}
-	option.Expr = expr
-
 	if option.Device == "" {
 		devs, err := pcap.FindAllDevs()
 		if err != nil {
