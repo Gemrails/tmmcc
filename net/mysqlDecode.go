@@ -79,6 +79,7 @@ func (h *MysqlDecode) Decode(data *SourceData) {
 	//fmt.Println(data.Source)
 	// Now with a source, process the packet.
 	processPacket(rs, request, data.Source)
+	log.Info(*rs.qdata)
 }
 
 const (
@@ -385,7 +386,6 @@ func processPacket(rs *source, request bool, data []byte) {
 			log.Fatalf("Unknown type in format string")
 		}
 	}
-	log.Infof("Text:%s", text)
 	qdata, ok := qbuf[text]
 	if !ok {
 		qdata = &queryData{}
