@@ -19,6 +19,7 @@
 package net
 
 import (
+	"fmt"
 	"strings"
 	"tcm/config"
 
@@ -69,24 +70,24 @@ func (n *Util) Pcap() int {
 var id = 0
 
 func (n *Util) handlePacket(packet gopacket.Packet) {
-	// id++
-	// fmt.Println(packet.Data())
-	// if link := packet.LinkLayer(); link != nil {
-	// 	fmt.Printf("Link:%d  ", id)
-	// 	fmt.Println(link.LayerContents())
-	// }
-	// if link := packet.NetworkLayer(); link != nil {
-	// 	fmt.Printf("NetworkLayer:%d  ", id)
-	// 	fmt.Println(link.LayerContents())
-	// }
-	// if link := packet.TransportLayer(); link != nil {
-	// 	fmt.Printf("Transport:%d  ", id)
-	// 	fmt.Println(link.LayerContents())
-	// }
-	// if link := packet.ApplicationLayer(); link != nil {
-	// 	fmt.Printf("ApplicationLayer:%d  ", id)
-	// 	fmt.Println(link.LayerContents())
-	// }
+	id++
+	fmt.Println(packet.Data())
+	if link := packet.LinkLayer(); link != nil {
+		fmt.Printf("Link:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
+	if link := packet.NetworkLayer(); link != nil {
+		fmt.Printf("NetworkLayer:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
+	if link := packet.TransportLayer(); link != nil {
+		fmt.Printf("Transport:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
+	if link := packet.ApplicationLayer(); link != nil {
+		fmt.Printf("ApplicationLayer:%d  ", id)
+		fmt.Println(link.LayerContents())
+	}
 	// return
 	app := packet.ApplicationLayer()
 	if app != nil {

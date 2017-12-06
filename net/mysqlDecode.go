@@ -290,7 +290,7 @@ func processPacket(rs *source, request bool, data []byte) {
 		}
 		rs.synced = true
 	}
-	log.Infof("[%s] request=%b ptype=%d plen=%d", rs.src, request, ptype, len(pdata))
+	//log.Infof("[%s] request=%b ptype=%d plen=%d", rs.src, request, ptype, len(pdata))
 
 	// No (full) packet detected yet. Continue on our way.
 	if ptype == -1 {
