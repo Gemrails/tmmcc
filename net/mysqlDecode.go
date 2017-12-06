@@ -79,7 +79,8 @@ func (h *MysqlDecode) Decode(data *SourceData) {
 	//fmt.Println(data.Source)
 	// Now with a source, process the packet.
 	processPacket(rs, request, data.Source)
-	log.Info(*rs.qdata)
+	min, avg, max := calculateTimes(&rs.qdata.times)
+	log.Infof("SQL:%s Count: %d Time: Min(%d) Avg(%d) Max(%d)", rs.qtext, rs.qdata.count, min, avg, max)
 }
 
 const (
