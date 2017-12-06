@@ -321,8 +321,6 @@ func processPacket(rs *source, request bool, data []byte) {
 		if verbose && len(rs.qtext) > 0 {
 			log.Infof("    %s%s %s## %sbytes: %d time: %0.2f%s\n", COLOR_GREEN, rs.qtext, COLOR_RED,
 				COLOR_YELLOW, rs.qbytes, float64(reqtime)/1000000, COLOR_DEFAULT)
-		} else {
-			log.Infof(" VERBOSE:%b qtext:%s", verbose, rs.qtext)
 		}
 
 		return
@@ -379,6 +377,7 @@ func processPacket(rs *source, request bool, data []byte) {
 			log.Fatalf("Unknown type in format string")
 		}
 	}
+	log.Infof("Text:%s", text)
 	qdata, ok := qbuf[text]
 	if !ok {
 		qdata = &queryData{}

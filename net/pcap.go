@@ -19,7 +19,6 @@
 package net
 
 import (
-	"fmt"
 	"strings"
 	"tcm/config"
 
@@ -93,7 +92,7 @@ func (n *Util) handlePacket(packet gopacket.Packet) {
 	if app != nil {
 		//log.With("type", app.LayerType().String()).Infoln("Receive a application layer packet")
 		//log.Infoln(packet.String())
-		fmt.Println(app.Payload())
+		//fmt.Println(app.Payload())
 		sd := &SourceData{
 			Source:      app.Payload(),
 			ReceiveDate: packet.Metadata().Timestamp,
