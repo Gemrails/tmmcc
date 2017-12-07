@@ -19,10 +19,8 @@
 package net
 
 import (
-	"fmt"
 	"math/rand"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -31,11 +29,18 @@ import (
 
 //MysqlDecode http解码
 type MysqlDecode struct {
+	qbuf  map[string]*queryData
+	chmap map[string]*source
+	times [TIME_BUCKETS]uint64
 }
 
 //CreateMysqlDecode CreateMysqlDecode
 func CreateMysqlDecode() *MysqlDecode {
-	var m MysqlDecode
+	m := MysqlDecode{
+		qbuf:  make(map[string]*queryData),
+		chmap: make(map[string]*source),
+	}
+
 	parseFormat("#s:#q")
 	rand.Seed(time.Now().UnixNano())
 	return &m
@@ -70,17 +75,15 @@ func (h *MysqlDecode) Decode(data *SourceData) {
 	}
 
 	// Get the data structure for this source, then do something.
-	rs, ok := chmap[src]
+	rs, ok := h.chmap[src]
 	if !ok {
 		rs = &source{src: src, srcip: data.SourceHost.String(), synced: false}
 		stats.streams++
-		chmap[src] = rs
+		h.chmap[src] = rs
 	}
 	//fmt.Println(data.Source)
 	// Now with a source, process the packet.
-	processPacket(rs, request, data.Source)
-	min, avg, max := calculateTimes(&rs.qdata.times)
-	log.Infof("SQL:%s Count: %d Time: Min(%d) Avg(%d) Max(%d)", rs.qtext, rs.qdata.count, min, avg, max)
+	h.processPacket(rs, request, data.Source)
 }
 
 const (
@@ -142,42 +145,39 @@ type queryData struct {
 	times [TIME_BUCKETS]uint64
 }
 
-var start int64 = UnixNow()
-var qbuf map[string]*queryData = make(map[string]*queryData)
+var start = UnixNow()
 var querycount int
-var chmap map[string]*source = make(map[string]*source)
 
-var verbose bool = true
-var noclean bool = false
-var dirty bool = false
+var verbose = true
+var noclean = false
+var dirty = false
 var format []interface{}
-var port uint16
-var times [TIME_BUCKETS]uint64
 
 var stats struct {
 	packets struct {
-		rcvd      uint64
-		rcvd_sync uint64
+		rcvd     uint64
+		rcvdsync uint64
 	}
 	desyncs uint64
 	streams uint64
 }
 
+//UnixNow UnixNow
 func UnixNow() int64 {
 	return time.Now().Unix()
 }
 
 func calculateTimes(timings *[TIME_BUCKETS]uint64) (fmin, favg, fmax float64) {
 	var counts, total, min, max, avg uint64 = 0, 0, 0, 0, 0
-	has_min := false
+	hasmin := false
 	for _, val := range *timings {
 		if val == 0 {
 			// Queries should never take 0 nanoseconds. We are using 0 as a
 			// trigger to mean 'uninitialized reading'.
 			continue
 		}
-		if val < min || !has_min {
-			has_min = true
+		if val < min || !hasmin {
+			hasmin = true
 			min = val
 		}
 		if val > max {
@@ -193,75 +193,75 @@ func calculateTimes(timings *[TIME_BUCKETS]uint64) (fmin, favg, fmax float64) {
 		float64(max) / 1000000
 }
 
-func handleStatusUpdate(displaycount int, sortby string, cutoff int) {
-	elapsed := float64(UnixNow() - start)
+// func handleStatusUpdate(displaycount int, sortby string, cutoff int) {
+// 	elapsed := float64(UnixNow() - start)
 
-	// print status bar
-	log.Infof("%s%d total queries, %0.2f per second%s", COLOR_RED, querycount,
-		float64(querycount)/elapsed, COLOR_DEFAULT)
+// 	// print status bar
+// 	log.Infof("%s%d total queries, %0.2f per second%s", COLOR_RED, querycount,
+// 		float64(querycount)/elapsed, COLOR_DEFAULT)
 
-	log.Infof("%d packets (%0.2f%% on synchronized streams) / %d desyncs / %d streams",
-		stats.packets.rcvd, float64(stats.packets.rcvd_sync)/float64(stats.packets.rcvd)*100,
-		stats.desyncs, stats.streams)
+// 	log.Infof("%d packets (%0.2f%% on synchronized streams) / %d desyncs / %d streams",
+// 		stats.packets.rcvd, float64(stats.packets.rcvd_sync)/float64(stats.packets.rcvd)*100,
+// 		stats.desyncs, stats.streams)
 
-	// global timing values
-	gmin, gavg, gmax := calculateTimes(&times)
-	log.Infof("%0.2fms min / %0.2fms avg / %0.2fms max query times", gmin, gavg, gmax)
-	log.Infof("%d unique results in this filter", len(qbuf))
-	log.Infof(" ")
-	log.Infof("%s count     %sqps     %s  min    avg   max      %sbytes      per qry%s",
-		COLOR_YELLOW, COLOR_CYAN, COLOR_YELLOW, COLOR_GREEN, COLOR_DEFAULT)
+// 	// global timing values
+// 	gmin, gavg, gmax := calculateTimes(&times)
+// 	log.Infof("%0.2fms min / %0.2fms avg / %0.2fms max query times", gmin, gavg, gmax)
+// 	log.Infof("%d unique results in this filter", len(qbuf))
+// 	log.Infof(" ")
+// 	log.Infof("%s count     %sqps     %s  min    avg   max      %sbytes      per qry%s",
+// 		COLOR_YELLOW, COLOR_CYAN, COLOR_YELLOW, COLOR_GREEN, COLOR_DEFAULT)
 
-	// we cheat so badly here...
-	var tmp sortableSlice = make(sortableSlice, 0, len(qbuf))
-	for q, c := range qbuf {
-		qps := float64(c.count) / elapsed
-		if qps < float64(cutoff) {
-			continue
-		}
+// 	// we cheat so badly here...
+// 	var tmp sortableSlice = make(sortableSlice, 0, len(qbuf))
+// 	for q, c := range qbuf {
+// 		qps := float64(c.count) / elapsed
+// 		if qps < float64(cutoff) {
+// 			continue
+// 		}
 
-		qmin, qavg, qmax := calculateTimes(&c.times)
-		bavg := uint64(float64(c.bytes) / float64(c.count))
+// 		qmin, qavg, qmax := calculateTimes(&c.times)
+// 		bavg := uint64(float64(c.bytes) / float64(c.count))
 
-		sorted := float64(c.count)
-		if sortby == "avg" {
-			sorted = qavg
-		} else if sortby == "max" {
-			sorted = qmax
-		} else if sortby == "maxbytes" {
-			sorted = float64(c.bytes)
-		} else if sortby == "avgbytes" {
-			sorted = float64(bavg)
-		}
+// 		sorted := float64(c.count)
+// 		if sortby == "avg" {
+// 			sorted = qavg
+// 		} else if sortby == "max" {
+// 			sorted = qmax
+// 		} else if sortby == "maxbytes" {
+// 			sorted = float64(c.bytes)
+// 		} else if sortby == "avgbytes" {
+// 			sorted = float64(bavg)
+// 		}
 
-		tmp = append(tmp, sortable{sorted, fmt.Sprintf(
-			"%s%6d  %s%7.2f/s  %s%6.2f %6.2f %6.2f  %s%9db %6db %s%s%s",
-			COLOR_YELLOW, c.count, COLOR_CYAN, qps, COLOR_YELLOW, qmin, qavg, qmax,
-			COLOR_GREEN, c.bytes, bavg, COLOR_WHITE, q, COLOR_DEFAULT)})
-	}
-	sort.Sort(tmp)
+// 		tmp = append(tmp, sortable{sorted, fmt.Sprintf(
+// 			"%s%6d  %s%7.2f/s  %s%6.2f %6.2f %6.2f  %s%9db %6db %s%s%s",
+// 			COLOR_YELLOW, c.count, COLOR_CYAN, qps, COLOR_YELLOW, qmin, qavg, qmax,
+// 			COLOR_GREEN, c.bytes, bavg, COLOR_WHITE, q, COLOR_DEFAULT)})
+// 	}
+// 	sort.Sort(tmp)
 
-	// now print top to bottom, since our sorted list is sorted backwards
-	// from what we want
-	if len(tmp) < displaycount {
-		displaycount = len(tmp)
-	}
-	for i := 1; i <= displaycount; i++ {
-		log.Infof(tmp[len(tmp)-i].line)
-	}
-}
+// 	// now print top to bottom, since our sorted list is sorted backwards
+// 	// from what we want
+// 	if len(tmp) < displaycount {
+// 		displaycount = len(tmp)
+// 	}
+// 	for i := 1; i <= displaycount; i++ {
+// 		log.Infof(tmp[len(tmp)-i].line)
+// 	}
+// }
 
 // Do something with a packet for a source.
-func processPacket(rs *source, request bool, data []byte) {
+func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 	// log.Infof("[%s] request=%t, got %d bytes", rs.src, request,
 	// 	len(data))
 
 	stats.packets.rcvd++
 	if rs.synced {
-		stats.packets.rcvd_sync++
+		stats.packets.rcvdsync++
 	}
 
-	var ptype int = -1
+	var ptype = -1
 	var pdata []byte
 
 	if request {
@@ -275,7 +275,7 @@ func processPacket(rs *source, request bool, data []byte) {
 			rs.synced = false
 		}
 		rs.reqbuffer = data
-		ptype, pdata = carvePacket(&rs.reqbuffer)
+		ptype, pdata = h.carvePacket(&rs.reqbuffer)
 	} else {
 		// FIXME: For now we're not doing anything with response data, just using the first packet
 		// after a query to determine latency.
@@ -317,7 +317,7 @@ func processPacket(rs *source, request bool, data []byte) {
 		// We keep track of per-source, global, and per-query timings.
 		randn := rand.Intn(TIME_BUCKETS)
 		rs.reqTimes[randn] = reqtime
-		times[randn] = reqtime
+		h.times[randn] = reqtime
 		if rs.qdata != nil {
 			// This should never fail but it has. Probably because of a
 			// race condition I need to suss out, or sharing between
@@ -358,7 +358,7 @@ func processPacket(rs *source, request bool, data []byte) {
 				if dirty {
 					text += string(pdata)
 				} else {
-					text += cleanupQuery(pdata)
+					text += h.cleanupQuery(pdata)
 				}
 			case F_ROUTE:
 				// Routes are in the query like:
@@ -372,7 +372,7 @@ func processPacket(rs *source, request bool, data []byte) {
 						text += parts[2]
 					}
 				} else {
-					text += "(unknown) " + cleanupQuery(pdata)
+					text += "(unknown) " + h.cleanupQuery(pdata)
 				}
 			case F_SOURCE:
 				text += rs.src
@@ -387,10 +387,10 @@ func processPacket(rs *source, request bool, data []byte) {
 			log.Fatalf("Unknown type in format string")
 		}
 	}
-	qdata, ok := qbuf[text]
+	qdata, ok := h.qbuf[text]
 	if !ok {
 		qdata = &queryData{}
-		qbuf[text] = qdata
+		h.qbuf[text] = qdata
 	}
 	qdata.count++
 	qdata.bytes += plen
@@ -399,7 +399,7 @@ func processPacket(rs *source, request bool, data []byte) {
 
 // carvePacket tries to pull a packet out of a slice of bytes. If so, it removes
 // those bytes from the slice.
-func carvePacket(buf *[]byte) (int, []byte) {
+func (h *MysqlDecode) carvePacket(buf *[]byte) (int, []byte) {
 	datalen := uint32(len(*buf))
 	if datalen < 5 {
 		return -1, nil
@@ -426,68 +426,10 @@ func carvePacket(buf *[]byte) (int, []byte) {
 	return ptype, data
 }
 
-// extract the data... we have to figure out where it is, which means extracting data
-// from the various headers until we get the location we want.  this is crude, but
-// functional and it should be fast.
-func handlePacket(data []byte) {
-	// Ethernet frame has 14 bytes of stuff to ignore, so we start our root position here
-	var pos byte = 14
-
-	// Grab the src IP address of this packet from the IP header.
-	srcIP := data[pos+12 : pos+16]
-	dstIP := data[pos+16 : pos+20]
-
-	// The IP frame has the header length in bits 4-7 of byte 0 (relative).
-	pos += data[pos] & 0x0F * 4
-
-	// Grab the source port from the TCP header.
-	srcPort := uint16(data[pos])<<8 + uint16(data[pos+1])
-	dstPort := uint16(data[pos+2])<<8 + uint16(data[pos+3])
-
-	// The TCP frame has the data offset in bits 4-7 of byte 12 (relative).
-	pos += byte(data[pos+12]) >> 4 * 4
-
-	// If this is a 0-length payload, do nothing. (Any way to change our filter
-	// to only dump packets with data?)
-	if len(data[pos:]) <= 0 {
-		return
-	}
-
-	// This is either an inbound or outbound packet. Determine by seeing which
-	// end contains our port. Either way, we want to put this on the channel of
-	// the remote end.
-	var src string
-	var request bool = false
-	if srcPort == port {
-		src = fmt.Sprintf("%d.%d.%d.%d:%d", dstIP[0], dstIP[1], dstIP[2],
-			dstIP[3], dstPort)
-		//log.Printf("response to %s", src)
-	} else if dstPort == port {
-		src = fmt.Sprintf("%d.%d.%d.%d:%d", srcIP[0], srcIP[1], srcIP[2],
-			srcIP[3], srcPort)
-		request = true
-		//log.Printf("request from %s", src)
-	} else {
-		log.Fatalf("got packet src = %d, dst = %d", srcPort, dstPort)
-	}
-
-	// Get the data structure for this source, then do something.
-	rs, ok := chmap[src]
-	if !ok {
-		srcip := src[0:strings.Index(src, ":")]
-		rs = &source{src: src, srcip: srcip, synced: false}
-		stats.streams++
-		chmap[src] = rs
-	}
-
-	// Now with a source, process the packet.
-	processPacket(rs, request, data[pos:])
-}
-
 // scans forward in the query given the current type and returns when we encounter
 // a new type and need to stop scanning.  returns the size of the last token and
 // the type of it.
-func scanToken(query []byte) (length int, thistype int) {
+func (h *MysqlDecode) scanToken(query []byte) (length int, thistype int) {
 	if len(query) < 1 {
 		log.Fatalf("scanToken called with empty query")
 	}
@@ -500,11 +442,11 @@ func scanToken(query []byte) (length int, thistype int) {
 	b := query[0]
 	switch {
 	case b == 39 || b == 34: // '"
-		started_with := b
+		startedwith := b
 		escaped := false
 		for i := 1; i < len(query); i++ {
 			switch query[i] {
-			case started_with:
+			case startedwith:
 				if escaped {
 					escaped = false
 					continue
@@ -558,17 +500,13 @@ func scanToken(query []byte) (length int, thistype int) {
 	default: // everything else
 		return 1, TOKEN_OTHER
 	}
-
-	// shouldn't get here
-	log.Fatalf("scanToken failure: [%s]", query)
-	return
 }
 
-func cleanupQuery(query []byte) string {
+func (h *MysqlDecode) cleanupQuery(query []byte) string {
 	// iterate until we hit the end of the query...
 	var qspace []string
 	for i := 0; i < len(query); {
-		length, toktype := scanToken(query[i:])
+		length, toktype := h.scanToken(query[i:])
 
 		switch toktype {
 		case TOKEN_WORD, TOKEN_OTHER:
@@ -609,46 +547,46 @@ func parseFormat(formatstr string) {
 		formatstr = "#b:#k"
 	}
 
-	is_special := false
+	isspecial := false
 	curstr := ""
-	do_append := F_NONE
+	doappend := F_NONE
 	for _, char := range formatstr {
 		if char == '#' {
-			if is_special {
+			if isspecial {
 				curstr += string(char)
-				is_special = false
+				isspecial = false
 			} else {
-				is_special = true
+				isspecial = true
 			}
 			continue
 		}
 
-		if is_special {
+		if isspecial {
 			switch strings.ToLower(string(char)) {
 			case "s":
-				do_append = F_SOURCE
+				doappend = F_SOURCE
 			case "i":
-				do_append = F_SOURCEIP
+				doappend = F_SOURCEIP
 			case "r":
-				do_append = F_ROUTE
+				doappend = F_ROUTE
 			case "q":
-				do_append = F_QUERY
+				doappend = F_QUERY
 			default:
 				curstr += "#" + string(char)
 			}
-			is_special = false
+			isspecial = false
 		} else {
 			curstr += string(char)
 		}
 
-		if do_append != F_NONE {
+		if doappend != F_NONE {
 			if curstr != "" {
-				format = append(format, curstr, do_append)
+				format = append(format, curstr, doappend)
 				curstr = ""
 			} else {
-				format = append(format, do_append)
+				format = append(format, doappend)
 			}
-			do_append = F_NONE
+			doappend = F_NONE
 		}
 	}
 	if curstr != "" {
@@ -656,14 +594,17 @@ func parseFormat(formatstr string) {
 	}
 }
 
-func (self sortableSlice) Len() int {
-	return len(self)
+//Len Len
+func (s sortableSlice) Len() int {
+	return len(s)
 }
 
-func (self sortableSlice) Less(i, j int) bool {
-	return self[i].value < self[j].value
+//Less Less
+func (s sortableSlice) Less(i, j int) bool {
+	return s[i].value < s[j].value
 }
 
-func (self sortableSlice) Swap(i, j int) {
-	self[i], self[j] = self[j], self[i]
+//Swap Swap
+func (s sortableSlice) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
 }
