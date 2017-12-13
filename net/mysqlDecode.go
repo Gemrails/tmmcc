@@ -51,7 +51,7 @@ func CreateMysqlDecode(option *config.Option) *MysqlDecode {
 		chmap:            make(map[string]*source),
 		mysqlMetricStore: ms,
 	}
-	m.parseFormat("#s:#q")
+	m.parseFormat("#s/#q")
 	rand.Seed(time.Now().UnixNano())
 	return &m
 }
@@ -281,15 +281,13 @@ func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 		var code = "Success"
 		if len(pdata) > 7 {
 			if pdata[4] == 255 { //0xFF Error包
-
 				code = "Error"
 			}
 			if pdata[4] == 254 { //0xFE EOF包
 				code = "EOF"
 			}
 		}
-		fmt.Println("Code:" + code)
-		sqlinfo := strings.Split(rs.qtext, ":")
+		sqlinfo := strings.SplitN(rs.qtext, "/", 2)
 		var mm = &metric.MysqlMessage{
 			Code:          code,
 			SQL:           sqlinfo[1],

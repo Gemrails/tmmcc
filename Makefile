@@ -2,11 +2,12 @@ TAG=v1
 PREFIX=rainbond/tcm
 Name=tcm
 
-build: ## build the go packages
+localbuild: ## build the go packages
 	@echo "🐳 $@"
 	@go build -o tcm ./cmd
-run:build
+run:localbuild
 	sudo ./tcm -i lo0 -protocol mysql  -expr="tcp port 3306"
+
 dockerbuild:
 	@echo "🐳 $@"
 	@docker build -t tcmbuild ./build
