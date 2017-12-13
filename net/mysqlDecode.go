@@ -45,6 +45,7 @@ func CreateMysqlDecode(option *config.Option) *MysqlDecode {
 		log.Errorf("create metric store error")
 		return nil
 	}
+	go ms.Start()
 	m := MysqlDecode{
 		qbuf:             make(map[string]*queryData),
 		chmap:            make(map[string]*source),
@@ -280,12 +281,14 @@ func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 		var code = "Success"
 		if len(pdata) > 7 {
 			if pdata[4] == 255 { //0xFF Error包
+
 				code = "Error"
 			}
 			if pdata[4] == 254 { //0xFE EOF包
 				code = "EOF"
 			}
 		}
+		fmt.Println("Code:" + code)
 		sqlinfo := strings.Split(rs.qtext, ":")
 		var mm = metric.MysqlMessage{
 			Code:          code,
