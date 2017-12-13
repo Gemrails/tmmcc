@@ -30,6 +30,66 @@ import (
 	"github.com/prometheus/common/log"
 )
 
+const (
+	TOKEN_WORD       = 0
+	TOKEN_QUOTE      = 1
+	TOKEN_NUMBER     = 2
+	TOKEN_WHITESPACE = 3
+	TOKEN_OTHER      = 4
+
+	// Internal tuning
+	TIME_BUCKETS = 10000
+
+	// ANSI colors
+	COLOR_RED     = "\x1b[31m"
+	COLOR_GREEN   = "\x1b[32m"
+	COLOR_YELLOW  = "\x1b[33m"
+	COLOR_CYAN    = "\x1b[36m"
+	COLOR_WHITE   = "\x1b[37m"
+	COLOR_DEFAULT = "\x1b[39m"
+
+	// MySQL packet types
+	COM_QUERY = 3
+
+	// These are used for formatting outputs
+	F_NONE = iota
+	F_QUERY
+	F_ROUTE
+	F_SOURCE
+	F_SOURCEIP
+)
+
+type packet struct {
+	request bool // request or response
+	data    []byte
+}
+
+type source struct {
+	src       string
+	srcip     string
+	synced    bool
+	reqbuffer []byte
+	resbuffer []byte
+	reqSent   *time.Time
+	reqTimes  [TIME_BUCKETS]uint64
+	qbytes    uint64
+	qdata     *queryData
+	qtext     string
+}
+
+type queryData struct {
+	count uint64
+	bytes uint64
+	times [TIME_BUCKETS]uint64
+}
+
+var start = UnixNow()
+var querycount int
+
+var verbose = false
+var noclean = false
+var dirty = false
+
 //MysqlDecode http解码
 type MysqlDecode struct {
 	qbuf             map[string]*queryData
@@ -88,7 +148,6 @@ func (h *MysqlDecode) Decode(data *SourceData) {
 	rs, ok := h.chmap[src]
 	if !ok {
 		rs = &source{src: src, srcip: data.SourceHost.String(), synced: false}
-		stats.streams++
 		h.chmap[src] = rs
 	}
 	//fmt.Println(data.Source)
@@ -97,121 +156,13 @@ func (h *MysqlDecode) Decode(data *SourceData) {
 
 }
 
-const (
-	TOKEN_WORD       = 0
-	TOKEN_QUOTE      = 1
-	TOKEN_NUMBER     = 2
-	TOKEN_WHITESPACE = 3
-	TOKEN_OTHER      = 4
-
-	// Internal tuning
-	TIME_BUCKETS = 10000
-
-	// ANSI colors
-	COLOR_RED     = "\x1b[31m"
-	COLOR_GREEN   = "\x1b[32m"
-	COLOR_YELLOW  = "\x1b[33m"
-	COLOR_CYAN    = "\x1b[36m"
-	COLOR_WHITE   = "\x1b[37m"
-	COLOR_DEFAULT = "\x1b[39m"
-
-	// MySQL packet types
-	COM_QUERY = 3
-
-	// These are used for formatting outputs
-	F_NONE = iota
-	F_QUERY
-	F_ROUTE
-	F_SOURCE
-	F_SOURCEIP
-)
-
-type packet struct {
-	request bool // request or response
-	data    []byte
-}
-
-type sortable struct {
-	value float64
-	line  string
-}
-type sortableSlice []sortable
-
-type source struct {
-	src       string
-	srcip     string
-	synced    bool
-	reqbuffer []byte
-	resbuffer []byte
-	reqSent   *time.Time
-	reqTimes  [TIME_BUCKETS]uint64
-	qbytes    uint64
-	qdata     *queryData
-	qtext     string
-}
-
-type queryData struct {
-	count uint64
-	bytes uint64
-	times [TIME_BUCKETS]uint64
-}
-
-var start = UnixNow()
-var querycount int
-
-var verbose = true
-var noclean = false
-var dirty = false
-
-var stats struct {
-	packets struct {
-		rcvd     uint64
-		rcvdsync uint64
-	}
-	desyncs uint64
-	streams uint64
-}
-
 //UnixNow UnixNow
 func UnixNow() int64 {
 	return time.Now().Unix()
 }
 
-func calculateTimes(timings *[TIME_BUCKETS]uint64) (fmin, favg, fmax float64) {
-	var counts, total, min, max, avg uint64 = 0, 0, 0, 0, 0
-	hasmin := false
-	for _, val := range *timings {
-		if val == 0 {
-			// Queries should never take 0 nanoseconds. We are using 0 as a
-			// trigger to mean 'uninitialized reading'.
-			continue
-		}
-		if val < min || !hasmin {
-			hasmin = true
-			min = val
-		}
-		if val > max {
-			max = val
-		}
-		counts++
-		total += val
-	}
-	if counts > 0 {
-		avg = total / counts // integer division
-	}
-	return float64(min) / 1000000, float64(avg) / 1000000,
-		float64(max) / 1000000
-}
-
 // Do something with a packet for a source.
 func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
-	// log.Infof("[%s] request=%t, got %d bytes", rs.src, request,
-	// 	len(data))
-
-	stats.packets.rcvd++
-	if rs.synced {
-		stats.packets.rcvdsync++
-	}
 
 	var ptype = -1
 	var pdata []byte
@@ -222,7 +173,6 @@ func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 		if rs.resbuffer != nil {
 			//				log.Printf("[%s] possibly pipelined request? %d bytes",
 			//					rs.src, len(rs.resbuffer))
-			stats.desyncs++
 			rs.resbuffer = nil
 			rs.synced = false
 		}
@@ -556,19 +506,4 @@ func (h *MysqlDecode) parseFormat(formatstr string) {
 	if curstr != "" {
 		h.format = append(h.format, curstr)
 	}
-}
-
-//Len Len
-func (s sortableSlice) Len() int {
-	return len(s)
-}
-
-//Less Less
-func (s sortableSlice) Less(i, j int) bool {
-	return s[i].value < s[j].value
-}
-
-//Swap Swap
-func (s sortableSlice) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
 }
