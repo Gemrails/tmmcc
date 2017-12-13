@@ -290,7 +290,7 @@ func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 		}
 		fmt.Println("Code:" + code)
 		sqlinfo := strings.Split(rs.qtext, ":")
-		var mm = metric.MysqlMessage{
+		var mm = &metric.MysqlMessage{
 			Code:          code,
 			SQL:           sqlinfo[1],
 			RemoteAddr:    sqlinfo[0],
