@@ -68,6 +68,7 @@ func NewMetric(protocol, messageServer, statsdserver string, messagePort int) St
 	case "mysql":
 		ctx, cancel := context.WithCancel(context.Background())
 		return &mysqlMetricStore{
+			sqlRequestSize:       make(map[string]uint64),
 			PathCache:            make(map[string]*cache),
 			IndependentIP:        make(map[string]*cache),
 			ServiceID:            os.Getenv("SERVICE_ID"),
