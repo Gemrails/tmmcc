@@ -31,14 +31,15 @@ import (
 )
 
 var (
-	device   = flag.String("i", "", "interface")
-	snaplen  = flag.Int("s", 65535, "snaplen")
-	help     = flag.Bool("h", false, "help")
-	timeout  = flag.Int("t", int(pcap.BlockForever), "timeout")
-	protocol = flag.String("protocol", "http", "network protocol")
-	expr     = flag.String("expr", "port 5000", "PCAP BPFFilter Rule")
-	udpIP    = flag.String("server-host", "127.0.0.1", "udp server host ")
-	udpPort  = flag.Int("server-port", 6666, "udp server port ")
+	device       = flag.String("i", "", "interface")
+	snaplen      = flag.Int("s", 65535, "snaplen")
+	help         = flag.Bool("h", false, "help")
+	timeout      = flag.Int("t", int(pcap.BlockForever), "timeout")
+	protocol     = flag.String("protocol", "http", "network protocol")
+	expr         = flag.String("expr", "port 5000", "PCAP BPFFilter Rule")
+	udpIP        = flag.String("server-host", "127.0.0.1", "udp server host ")
+	udpPort      = flag.Int("server-port", 6666, "udp server port ")
+	statsdServer = flag.String("statsd-server", "127.0.0.1:9125", "statsd server address")
 )
 
 //PCAPOption 抓包相关配置
@@ -55,10 +56,11 @@ type PCAPOption struct {
 //Option 主配置
 type Option struct {
 	PCAPOption
-	UDPIP     string
-	UDPPort   int
-	SendCount int
-	Close     chan struct{}
+	StatsdServer string
+	UDPIP        string
+	UDPPort      int
+	SendCount    int
+	Close        chan struct{}
 }
 
 //Flagparse 解析参数
@@ -77,9 +79,10 @@ func Flagparse() *Option {
 		Expr:     *expr,
 	}
 	option := &Option{
-		PCAPOption: pcapOption,
-		UDPIP:      *udpIP,
-		UDPPort:    *udpPort,
+		PCAPOption:   pcapOption,
+		UDPIP:        *udpIP,
+		UDPPort:      *udpPort,
+		StatsdServer: *statsdServer,
 	}
 	if option.Device == "" {
 		devs, err := pcap.FindAllDevs()

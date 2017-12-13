@@ -22,10 +22,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"tcm/config"
+	"tcm/metric"
 	"time"
 
 	"sync"
@@ -37,8 +39,19 @@ import (
 
 //HTTPDecode http解码
 type HTTPDecode struct {
+	httpmanager *HTTPManager
 }
-type mapkey string
+
+//CreateHTTPDecode CreateHTTPDecode
+func CreateHTTPDecode(option *config.Option) *HTTPDecode {
+	manager, err := CreateHTTPManager(option)
+	if err != nil {
+		log.Errorf("create http manager error,%s", err.Error())
+		return nil
+	}
+	md := &HTTPDecode{httpmanager: manager}
+	return md
+}
 
 //Decode 解码
 func (h *HTTPDecode) Decode(data *SourceData) {
@@ -70,7 +83,7 @@ func (h *HTTPDecode) Decode(data *SourceData) {
 				// log.Infof("To Host %s Port %s Time: %s ", data.TargetHost.String(), data.TargetPoint.String(), conv.String(data.ReceiveDate))
 				// log.Infof("Response ACK %b:%d  SEQ %d  Content-length:%s", data.TCP.ACK, data.TCP.Ack, data.TCP.Seq, response.Header.Get("Content-Length"))
 				rm.Response = response
-				httpmanager.MessageChan <- rm
+				h.httpmanager.MessageChan <- rm
 			}
 		} else {
 			log.Warnln("Discarded Response body package ", data.Source[0:4])
@@ -86,9 +99,9 @@ func (h *HTTPDecode) Decode(data *SourceData) {
 			// log.Infof("Request ACK %b:%d  SEQ %d ", data.TCP.ACK, data.TCP.Ack, data.TCP.Seq)
 			request.RemoteAddr = data.SourceHost.String()
 			key := conv.String(data.TCP.Ack) + data.SourceHost.String() + ":" + data.SourcePoint.String()
-			request = request.WithContext(context.WithValue(context.Background(), mapkey("key"), key))
-			request = request.WithContext(context.WithValue(request.Context(), mapkey("ReqTime"), data.ReceiveDate))
-			httpmanager.MessageChan <- request
+			request = request.WithContext(context.WithValue(context.Background(), metric.MapKey("key"), key))
+			request = request.WithContext(context.WithValue(request.Context(), metric.MapKey("ReqTime"), data.ReceiveDate))
+			h.httpmanager.MessageChan <- request
 		}
 	}
 }
@@ -98,7 +111,7 @@ type HTTPManager struct {
 	cache                      *cache.Cache
 	MessageChan                chan interface{}
 	RequestsLock, ResponseLock sync.Mutex
-	messageManager             MessageManager
+	httpMetricStore            metric.Store
 }
 
 //ResponseMessage response message
@@ -108,29 +121,30 @@ type ResponseMessage struct {
 	ReceiveTime time.Time
 }
 
-var httpmanager *HTTPManager
-
 //CreateHTTPManager 创建httpmanager
-func CreateHTTPManager(option *config.Option) error {
-	if httpmanager == nil {
-		m, err := GetMessageManager(option.UDPIP, option.UDPPort, option.SendCount, option.Close, "http")
-		if err != nil {
-			return err
-		}
-		httpmanager = &HTTPManager{
-			cache:          cache.New(10*time.Second, 1*time.Minute),
-			MessageChan:    make(chan interface{}, 100),
-			messageManager: m,
-		}
-		go httpmanager.handleMessageChan(option.Close)
+func CreateHTTPManager(option *config.Option) (*HTTPManager, error) {
+
+	ms := metric.NewMetric("http", option.UDPIP, option.StatsdServer, option.UDPPort)
+	if ms == nil {
+		return nil, fmt.Errorf("create metric store error")
 	}
-	return nil
+	httpmanager := &HTTPManager{
+		cache:           cache.New(10*time.Second, 1*time.Minute),
+		MessageChan:     make(chan interface{}, 100),
+		httpMetricStore: ms,
+	}
+	go httpmanager.handleMessageChan(option.Close)
+	go ms.Start()
+	return httpmanager, nil
 }
 
 //Close 关闭
 func (m *HTTPManager) Close() {
 	if m.MessageChan != nil {
 		close(m.MessageChan)
+	}
+	if m.httpMetricStore != nil {
+		m.httpMetricStore.Stop()
 	}
 }
 func (m *HTTPManager) handleMessageChan(close chan struct{}) {
@@ -143,7 +157,7 @@ func (m *HTTPManager) handleMessageChan(close chan struct{}) {
 			switch message.(type) {
 			case *http.Request:
 				request := message.(*http.Request)
-				key := request.Context().Value(mapkey("key")).(string)
+				key := request.Context().Value(metric.MapKey("key")).(string)
 				m.cache.Set(key, request, cache.DefaultExpiration)
 				//log.Infof("Request number:%d", len(m.requests))
 			case ResponseMessage:
@@ -151,11 +165,11 @@ func (m *HTTPManager) handleMessageChan(close chan struct{}) {
 				key := response.RequestKey
 				if re, ok := m.cache.Get(key); ok {
 					if r, ok := re.(*http.Request); ok {
-						r = r.WithContext(context.WithValue(r.Context(), mapkey("ResTime"), response.ReceiveTime))
+						r = r.WithContext(context.WithValue(r.Context(), metric.MapKey("ResTime"), response.ReceiveTime))
 						response.Response.Request = r
 						m.cache.Delete(key)
-						info := CreateHTTPMessage(response.Response)
-						m.messageManager.SendMessage(info)
+						info := metric.CreateHTTPMessage(response.Response)
+						m.httpMetricStore.Input(info)
 					}
 				} else {
 					log.Warnf("request key %s not found", key)

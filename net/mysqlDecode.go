@@ -19,9 +19,12 @@
 package net
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"strings"
+	"tcm/config"
+	"tcm/metric"
 	"time"
 
 	"github.com/prometheus/common/log"
@@ -29,19 +32,25 @@ import (
 
 //MysqlDecode http解码
 type MysqlDecode struct {
-	qbuf  map[string]*queryData
-	chmap map[string]*source
-	times [TIME_BUCKETS]uint64
+	qbuf             map[string]*queryData
+	chmap            map[string]*source
+	format           []interface{}
+	mysqlMetricStore metric.Store
 }
 
 //CreateMysqlDecode CreateMysqlDecode
-func CreateMysqlDecode() *MysqlDecode {
-	m := MysqlDecode{
-		qbuf:  make(map[string]*queryData),
-		chmap: make(map[string]*source),
+func CreateMysqlDecode(option *config.Option) *MysqlDecode {
+	ms := metric.NewMetric("mysql", option.UDPIP, option.StatsdServer, option.UDPPort)
+	if ms == nil {
+		log.Errorf("create metric store error")
+		return nil
 	}
-
-	parseFormat("#s:#q")
+	m := MysqlDecode{
+		qbuf:             make(map[string]*queryData),
+		chmap:            make(map[string]*source),
+		mysqlMetricStore: ms,
+	}
+	m.parseFormat("#s:#q")
 	rand.Seed(time.Now().UnixNano())
 	return &m
 }
@@ -84,6 +93,7 @@ func (h *MysqlDecode) Decode(data *SourceData) {
 	//fmt.Println(data.Source)
 	// Now with a source, process the packet.
 	h.processPacket(rs, request, data.Source)
+
 }
 
 const (
@@ -151,7 +161,6 @@ var querycount int
 var verbose = true
 var noclean = false
 var dirty = false
-var format []interface{}
 
 var stats struct {
 	packets struct {
@@ -192,64 +201,6 @@ func calculateTimes(timings *[TIME_BUCKETS]uint64) (fmin, favg, fmax float64) {
 	return float64(min) / 1000000, float64(avg) / 1000000,
 		float64(max) / 1000000
 }
-
-// func handleStatusUpdate(displaycount int, sortby string, cutoff int) {
-// 	elapsed := float64(UnixNow() - start)
-
-// 	// print status bar
-// 	log.Infof("%s%d total queries, %0.2f per second%s", COLOR_RED, querycount,
-// 		float64(querycount)/elapsed, COLOR_DEFAULT)
-
-// 	log.Infof("%d packets (%0.2f%% on synchronized streams) / %d desyncs / %d streams",
-// 		stats.packets.rcvd, float64(stats.packets.rcvd_sync)/float64(stats.packets.rcvd)*100,
-// 		stats.desyncs, stats.streams)
-
-// 	// global timing values
-// 	gmin, gavg, gmax := calculateTimes(&times)
-// 	log.Infof("%0.2fms min / %0.2fms avg / %0.2fms max query times", gmin, gavg, gmax)
-// 	log.Infof("%d unique results in this filter", len(qbuf))
-// 	log.Infof(" ")
-// 	log.Infof("%s count     %sqps     %s  min    avg   max      %sbytes      per qry%s",
-// 		COLOR_YELLOW, COLOR_CYAN, COLOR_YELLOW, COLOR_GREEN, COLOR_DEFAULT)
-
-// 	// we cheat so badly here...
-// 	var tmp sortableSlice = make(sortableSlice, 0, len(qbuf))
-// 	for q, c := range qbuf {
-// 		qps := float64(c.count) / elapsed
-// 		if qps < float64(cutoff) {
-// 			continue
-// 		}
-
-// 		qmin, qavg, qmax := calculateTimes(&c.times)
-// 		bavg := uint64(float64(c.bytes) / float64(c.count))
-
-// 		sorted := float64(c.count)
-// 		if sortby == "avg" {
-// 			sorted = qavg
-// 		} else if sortby == "max" {
-// 			sorted = qmax
-// 		} else if sortby == "maxbytes" {
-// 			sorted = float64(c.bytes)
-// 		} else if sortby == "avgbytes" {
-// 			sorted = float64(bavg)
-// 		}
-
-// 		tmp = append(tmp, sortable{sorted, fmt.Sprintf(
-// 			"%s%6d  %s%7.2f/s  %s%6.2f %6.2f %6.2f  %s%9db %6db %s%s%s",
-// 			COLOR_YELLOW, c.count, COLOR_CYAN, qps, COLOR_YELLOW, qmin, qavg, qmax,
-// 			COLOR_GREEN, c.bytes, bavg, COLOR_WHITE, q, COLOR_DEFAULT)})
-// 	}
-// 	sort.Sort(tmp)
-
-// 	// now print top to bottom, since our sorted list is sorted backwards
-// 	// from what we want
-// 	if len(tmp) < displaycount {
-// 		displaycount = len(tmp)
-// 	}
-// 	for i := 1; i <= displaycount; i++ {
-// 		log.Infof(tmp[len(tmp)-i].line)
-// 	}
-// }
 
 // Do something with a packet for a source.
 func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
@@ -313,26 +264,37 @@ func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 			return
 		}
 		reqtime = uint64(time.Since(*rs.reqSent).Nanoseconds())
-
-		// We keep track of per-source, global, and per-query timings.
-		randn := rand.Intn(TIME_BUCKETS)
-		rs.reqTimes[randn] = reqtime
-		h.times[randn] = reqtime
 		if rs.qdata != nil {
 			// This should never fail but it has. Probably because of a
 			// race condition I need to suss out, or sharing between
 			// two different goroutines. :(
-			rs.qdata.times[randn] = reqtime
 			rs.qdata.bytes += plen
 		}
 		rs.reqSent = nil
 
 		// If we're in verbose mode, just dump statistics from this one.
 		if verbose && len(rs.qtext) > 0 {
-			log.Infof("    %s%s %s## %sbytes: %d time: %0.2f%s\n", COLOR_GREEN, rs.qtext, COLOR_RED,
+			fmt.Printf("    %s%s %s## %sbytes: %d time: %0.2f%s\n", COLOR_GREEN, rs.qtext, COLOR_RED,
 				COLOR_YELLOW, rs.qbytes, float64(reqtime)/1000000, COLOR_DEFAULT)
 		}
-
+		var code = "Success"
+		if len(pdata) > 7 {
+			if pdata[4] == 255 { //0xFF Error包
+				code = "Error"
+			}
+			if pdata[4] == 254 { //0xFE EOF包
+				code = "EOF"
+			}
+		}
+		sqlinfo := strings.Split(rs.qtext, ":")
+		var mm = metric.MysqlMessage{
+			Code:          code,
+			SQL:           sqlinfo[1],
+			RemoteAddr:    sqlinfo[0],
+			Reqtime:       reqtime,
+			ContentLength: rs.qdata.bytes,
+		}
+		h.mysqlMetricStore.Input(mm)
 		return
 	}
 
@@ -348,7 +310,7 @@ func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 	querycount++
 	var text string
 
-	for _, item := range format {
+	for _, item := range h.format {
 		switch item.(type) {
 		case int:
 			switch item.(int) {
@@ -387,6 +349,7 @@ func (h *MysqlDecode) processPacket(rs *source, request bool, data []byte) {
 			log.Fatalf("Unknown type in format string")
 		}
 	}
+
 	qdata, ok := h.qbuf[text]
 	if !ok {
 		qdata = &queryData{}
@@ -541,7 +504,7 @@ func (h *MysqlDecode) cleanupQuery(query []byte) string {
 // parseFormat takes a string and parses it out into the given format slice
 // that we later use to build up a string. This might actually be an overcomplicated
 // solution?
-func parseFormat(formatstr string) {
+func (h *MysqlDecode) parseFormat(formatstr string) {
 	formatstr = strings.TrimSpace(formatstr)
 	if formatstr == "" {
 		formatstr = "#b:#k"
@@ -581,16 +544,16 @@ func parseFormat(formatstr string) {
 
 		if doappend != F_NONE {
 			if curstr != "" {
-				format = append(format, curstr, doappend)
+				h.format = append(h.format, curstr, doappend)
 				curstr = ""
 			} else {
-				format = append(format, doappend)
+				h.format = append(h.format, doappend)
 			}
 			doappend = F_NONE
 		}
 	}
 	if curstr != "" {
-		format = append(format, curstr)
+		h.format = append(h.format, curstr)
 	}
 }
 

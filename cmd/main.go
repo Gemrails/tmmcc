@@ -39,16 +39,9 @@ func main() {
 	if option.Help {
 		flag.Usage()
 	}
-	if option.Protocol == "http" {
-		err := net.CreateHTTPManager(option)
-		if err != nil {
-			log.With("error", err.Error()).Errorln("create http manager error.")
-			os.Exit(0)
-		}
-	}
-	decode := net.FindDecode(option.Protocol)
+	decode := net.FindDecode(option)
 	if decode == nil {
-		log.Errorf("protocol %s can not support", option.Protocol)
+		log.Errorf("protocol %s can not support or decode manange create error", option.Protocol)
 		os.Exit(1)
 	}
 	netUtil := net.Util{

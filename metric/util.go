@@ -16,40 +16,30 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-package net
+package metric
 
-import (
-	"tcm/config"
-	"time"
-
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-)
-
-//SourceData 解码前数据
-type SourceData struct {
-	Source      []byte
-	ReceiveDate time.Time
-	SourcePoint *gopacket.Endpoint
-	TargetPoint *gopacket.Endpoint
-	SourceHost  *gopacket.Endpoint
-	TargetHost  *gopacket.Endpoint
-	TCP         *layers.TCP
-}
-
-//Decode 不同协议解码器接口
-type Decode interface {
-	Decode(*SourceData)
-}
-
-//FindDecode 通过协议查找解码器
-func FindDecode(option *config.Option) Decode {
-	switch option.Protocol {
-	case "http":
-		return CreateHTTPDecode(option)
-	case "mysql":
-		return CreateMysqlDecode(option)
-	default:
-		return nil
+func calculate(timings *[TIMEBUCKETS]uint64) (fmin, favg, fmax float64) {
+	var counts, total, min, max, avg uint64 = 0, 0, 0, 0, 0
+	hasmin := false
+	for _, val := range *timings {
+		if val == 0 {
+			// Queries should never take 0 nanoseconds. We are using 0 as a
+			// trigger to mean 'uninitialized reading'.
+			continue
+		}
+		if val < min || !hasmin {
+			hasmin = true
+			min = val
+		}
+		if val > max {
+			max = val
+		}
+		counts++
+		total += val
 	}
+	if counts > 0 {
+		avg = total / counts // integer division
+	}
+	return float64(min) / 1000000, float64(avg) / 1000000,
+		float64(max) / 1000000
 }

@@ -16,19 +16,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-package net
+package message
 
 import (
 	"fmt"
 	"net"
-	"net/http"
-	"os"
-	"strings"
 	"time"
 
 	"encoding/json"
 
-	conv "github.com/cstockton/go-conv"
 	"github.com/prometheus/common/log"
 )
 
@@ -72,40 +68,6 @@ func (m *HTTPMessage) Byte() []byte {
 		return nil
 	}
 	return d
-}
-
-//CreateHTTPMessage 通过response构造message
-func CreateHTTPMessage(rs *http.Response) *HTTPMessage {
-
-	m := &HTTPMessage{
-		ServiceID:     os.Getenv("SERVICE_ID"),
-		Method:        rs.Request.Method,
-		Protocol:      rs.Request.Proto,
-		UserAgent:     rs.Request.UserAgent(),
-		Server:        rs.Header.Get("Server"),
-		StatusCode:    rs.StatusCode,
-		ContentLength: conv.Int(rs.Header.Get("Content-Length")),
-		ResTime:       rs.Request.Context().Value(mapkey("ResTime")).(time.Time),
-		RemoteAddr:    rs.Request.RemoteAddr,
-	}
-	in := strings.Index(rs.Request.RequestURI, "?")
-	if in > -1 {
-		m.URI = rs.Request.RequestURI[:in]
-	} else {
-		m.URI = rs.Request.RequestURI
-	}
-	if t, ok := rs.Request.Context().Value(mapkey("ReqTime")).(time.Time); ok {
-		m.ReqTime = t
-	}
-	if t, ok := rs.Request.Context().Value(mapkey("ResTime")).(time.Time); ok {
-		m.ResTime = t
-	}
-	if !m.ReqTime.IsZero() && !m.ResTime.IsZero() {
-		m.TimeConsum = m.ResTime.Sub(m.ReqTime).Seconds() * 1000
-	}
-	rs.Request.Close = true
-	rs.Close = true
-	return m
 }
 
 //MessageManager message消化接口
