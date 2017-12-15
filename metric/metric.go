@@ -46,7 +46,7 @@ func NewMetric(protocol, messageServer, statsdserver string, messagePort int) St
 	}
 	os.Setenv("SERVICE_ID", "test")
 	os.Setenv("PORT", "5000")
-	statsdclient := CreateStatsdClient(statsdserver, fmt.Sprintf("%s.%s.", os.Getenv("SERVICE_ID"), os.Getenv("PORT")))
+	statsdclient := CreateStatsdClient(statsdserver, fmt.Sprintf("%s.%s.%s.", os.Getenv("SERVICE_ID"), os.Getenv("PORT"), protocol))
 	if statsdclient == nil {
 		return nil
 	}

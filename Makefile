@@ -6,7 +6,7 @@ localbuild: ## build the go packages
 	@echo "🐳 $@"
 	@go build -o tcm ./cmd
 run:localbuild
-	sudo ./tcm -i lo0 -protocol mysql  -expr="tcp port 3306"
+	sudo ./tcm -i lo0 -protocol http  -expr="tcp port 5000"
 
 dockerbuild:
 	@echo "🐳 $@"

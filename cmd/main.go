@@ -80,7 +80,7 @@ func httpListener() {
 	http.HandleFunc("/404", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
 	})
-	if err := http.ListenAndServe(":6655", nil); err != nil {
-		log.Errorf("listen http port 6655 error %s", err.Error())
+	if err := http.ListenAndServe(":5000", nil); err != nil {
+		log.Errorf("listen http port 5000 error %s", err.Error())
 	}
 }

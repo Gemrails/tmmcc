@@ -132,7 +132,7 @@ func (h *httpMetricStore) sendstatsd() {
 	h.statsdclient.FGauge("requesttime.min", min)
 	h.statsdclient.FGauge("requesttime.avg", avg)
 	h.statsdclient.FGauge("requesttime.max", max)
-	h.statsdclient.Gauge("request.client", int64(len(h.IndependentIP)))
+	h.statsdclient.Gauge("requestclient", int64(len(h.IndependentIP)))
 }
 
 func (h *httpMetricStore) clear() {
