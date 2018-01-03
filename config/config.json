@@ -1,0 +1,21 @@
+{
+    "base_ports": [{
+        "service_alias": "grce5fbb",
+        "service_id": "350eaefb82c29e1df66da300b9ce5fbb",
+        "port": 5000,
+        "protocol": "http",
+        "options": {}
+    }, {
+        "service_alias": "grce5fbb",
+        "service_id": "350eaefb82c29e1df66da300b9ce5fbb",
+        "port": 3306,
+        "protocol": "mysql",
+        "options": {}
+    }],
+    "base_services": [
+
+    ],
+    "base_normal": {
+        "options": null
+    }
+}

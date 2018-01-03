@@ -43,12 +43,12 @@ type Decode interface {
 }
 
 //FindDecode 通过协议查找解码器
-func FindDecode(option *config.Option) Decode {
-	switch option.Protocol {
+func FindDecode(option *config.Option, port config.Port) Decode {
+	switch port.Protocol {
 	case "http":
-		return CreateHTTPDecode(option)
+		return CreateHTTPDecode(option, port)
 	case "mysql":
-		return CreateMysqlDecode(option)
+		return CreateMysqlDecode(option, port)
 	default:
 		return nil
 	}

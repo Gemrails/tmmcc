@@ -49,6 +49,7 @@ type httpMetricStore struct {
 	//每次发出消息后清理
 	IndependentIP        map[string]*cache
 	ServiceID            string
+	HostName             string
 	Port                 string
 	ctx                  context.Context
 	cancel               context.CancelFunc
@@ -78,7 +79,7 @@ func (h *httpMetricStore) show() {
 	}
 	fmt.Println("-------IndependentIP---------")
 	for k, v := range h.IndependentIP {
-		fmt.Printf("IndependentIP:%s   Count %d \n", k, v)
+		fmt.Printf("IndependentIP:%s   Count %d \n", k, v.Count)
 	}
 }
 
@@ -92,6 +93,7 @@ func (h *httpMetricStore) sendmessage() {
 		mm := MonitorMessage{
 			ServiceID:      h.ServiceID,
 			Port:           h.Port,
+			HostName:       h.HostName,
 			MessageType:    "http",
 			Key:            v.Key,
 			Count:          v.Count,
@@ -154,7 +156,6 @@ func (h *httpMetricStore) clear() {
 	for _, key := range clearKey {
 		delete(h.IndependentIP, key)
 	}
-
 }
 
 //Input 数据输入

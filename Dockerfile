@@ -24,6 +24,4 @@ ENV SERVICE_ID=system
 
 ENTRYPOINT ["/bin/tcm"]
 
-CMD ["-i","eth0"]
-
 

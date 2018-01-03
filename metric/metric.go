@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/common/log"
@@ -39,17 +40,16 @@ type Store interface {
 }
 
 //NewMetric new metric store
-func NewMetric(protocol, messageServer, statsdserver string, messagePort int) Store {
+func NewMetric(protocol, messageServer, statsdserver string, messagePort, port int) Store {
 	mmm, err := CreateMonitorMessageManage(messageServer, messagePort)
 	if err != nil {
 		return nil
 	}
-	os.Setenv("SERVICE_ID", "test")
-	os.Setenv("PORT", "5000")
 	statsdclient := CreateStatsdClient(statsdserver, fmt.Sprintf("%s.%s.%s.", os.Getenv("SERVICE_ID"), os.Getenv("PORT"), protocol))
 	if statsdclient == nil {
 		return nil
 	}
+	hostname, _ := os.Hostname()
 	switch protocol {
 	case "http":
 		ctx, cancel := context.WithCancel(context.Background())
@@ -59,7 +59,8 @@ func NewMetric(protocol, messageServer, statsdserver string, messagePort int) St
 			PathCache:            make(map[string]*cache),
 			IndependentIP:        make(map[string]*cache),
 			ServiceID:            os.Getenv("SERVICE_ID"),
-			Port:                 os.Getenv("PORT"),
+			Port:                 strconv.Itoa(port),
+			HostName:             hostname,
 			cancel:               cancel,
 			ctx:                  ctx,
 			monitorMessageManage: mmm,
@@ -72,7 +73,8 @@ func NewMetric(protocol, messageServer, statsdserver string, messagePort int) St
 			PathCache:            make(map[string]*cache),
 			IndependentIP:        make(map[string]*cache),
 			ServiceID:            os.Getenv("SERVICE_ID"),
-			Port:                 os.Getenv("PORT"),
+			Port:                 strconv.Itoa(port),
+			HostName:             hostname,
 			cancel:               cancel,
 			ctx:                  ctx,
 			monitorMessageManage: mmm,
@@ -87,6 +89,7 @@ func NewMetric(protocol, messageServer, statsdserver string, messagePort int) St
 type MonitorMessage struct {
 	ServiceID   string
 	Port        string
+	HostName    string
 	MessageType string //mysql，http ...
 	Key         string
 	//总时间

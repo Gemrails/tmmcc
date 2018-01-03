@@ -19,7 +19,7 @@
 package net
 
 import (
-	"strings"
+	"fmt"
 	"tcm/config"
 
 	"github.com/prometheus/common/log"
@@ -32,35 +32,48 @@ import (
 //Util 网络抓包工具
 type Util struct {
 	Option *config.Option
+	Port   config.Port
 	Decode Decode
+}
+
+//CreateUtil 创建抓包器
+func CreateUtil(Port config.Port, Decode Decode, Option *config.Option) *Util {
+	return &Util{
+		Option: Option,
+		Port:   Port,
+		Decode: Decode,
+	}
 }
 
 //Pcap 抓包
 func (n *Util) Pcap() int {
-	devicestr := n.Option.Device
-	devices := strings.Split(devicestr, ",")
-	for _, device := range devices {
-		if handle, err := pcap.OpenLive(device, int32(n.Option.Snaplen), true, n.Option.TimeOut); err != nil {
+	devs, err := pcap.FindAllDevs()
+	if err != nil {
+		log.Errorln("tcpdump: couldn't find any devices:", err)
+		return 1
+	}
+	for _, device := range devs {
+		if handle, err := pcap.OpenLive(device.Name, int32(n.Option.Snaplen), true, n.Option.TimeOut); err != nil {
 			log.With("error", err.Error()).Errorln("PCAP OpenLive Error.")
 			return 1
-		} else if err := handle.SetBPFFilter(n.Option.Expr); err != nil { // optional
-			log.With("error", err.Error()).Errorln("PCAP SetBPFFilter Error.", n.Option.Expr)
+		} else if err := handle.SetBPFFilter(fmt.Sprintf("port %d", n.Port.Port)); err != nil { // optional
+			log.With("error", err.Error()).Errorln("PCAP SetBPFFilter Error.", fmt.Sprintf("port %d", n.Port.Port))
 			return 1
 		} else {
-			log.Infof("Start listen the device %s %s ", device, n.Option.Expr)
+			log.Infof("Start listen the device %s %s ", device.Name, fmt.Sprintf("port %d", n.Port.Port))
 			packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-			go func(close chan struct{}, h *pcap.Handle) {
+			go func(close chan struct{}, h *pcap.Handle, deviceName string) {
 				for {
 					select {
 					case packet := <-packetSource.Packets():
 						n.handlePacket(packet) // Do something with a packet here.
 					case <-close:
-						log.Infoln("stop listen the device.")
+						log.Infof("stop listen the device %s.", deviceName)
 						h.Close()
 						return
 					}
 				}
-			}(n.Option.Close, handle)
+			}(n.Option.Close, handle, device.Name)
 		}
 	}
 	return 0

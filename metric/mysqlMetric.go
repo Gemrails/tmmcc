@@ -37,6 +37,7 @@ type mysqlMetricStore struct {
 	IndependentIP        map[string]*cache
 	ServiceID            string
 	Port                 string
+	HostName             string
 	ctx                  context.Context
 	cancel               context.CancelFunc
 	lock                 sync.Mutex
@@ -56,6 +57,7 @@ func (h *mysqlMetricStore) sendmessage() {
 			Port:           h.Port,
 			MessageType:    "mysql",
 			Key:            v.Key,
+			HostName:       h.HostName,
 			Count:          v.Count,
 			AbnormalCount:  v.UnusualCount,
 			AverageTime:    Round(avg, 2),

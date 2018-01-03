@@ -21,7 +21,6 @@ package net
 import (
 	"fmt"
 	"math/rand"
-	"os"
 	"strings"
 	"tcm/config"
 	"tcm/metric"
@@ -96,11 +95,12 @@ type MysqlDecode struct {
 	chmap            map[string]*source
 	format           []interface{}
 	mysqlMetricStore metric.Store
+	port             config.Port
 }
 
 //CreateMysqlDecode CreateMysqlDecode
-func CreateMysqlDecode(option *config.Option) *MysqlDecode {
-	ms := metric.NewMetric("mysql", option.UDPIP, option.StatsdServer, option.UDPPort)
+func CreateMysqlDecode(option *config.Option, port config.Port) *MysqlDecode {
+	ms := metric.NewMetric("mysql", option.UDPIP, option.StatsdServer, option.UDPPort, port.Port)
 	if ms == nil {
 		log.Errorf("create metric store error")
 		return nil
@@ -110,6 +110,7 @@ func CreateMysqlDecode(option *config.Option) *MysqlDecode {
 		qbuf:             make(map[string]*queryData),
 		chmap:            make(map[string]*source),
 		mysqlMetricStore: ms,
+		port:             port,
 	}
 	m.parseFormat("#s/#q")
 	rand.Seed(time.Now().UnixNano())
@@ -125,10 +126,6 @@ func (h *MysqlDecode) Decode(data *SourceData) {
 	if data.TCP.SrcPort.String() == "" {
 		log.Errorln("TCP SrcPort is empty, so it may be is not http")
 		return
-	}
-	Port := os.Getenv("PORT")
-	if Port == "" {
-		Port = "5000"
 	}
 	// This is either an inbound or outbound packet. Determine by seeing which
 	// end contains our port. Either way, we want to put this on the channel of

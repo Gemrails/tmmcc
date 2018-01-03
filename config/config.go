@@ -19,9 +19,14 @@
 package config
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
+	"strconv"
+
+	"github.com/Sirupsen/logrus"
 
 	"github.com/prometheus/common/log"
 
@@ -44,45 +49,43 @@ var (
 
 //PCAPOption 抓包相关配置
 type PCAPOption struct {
-	Device   string
-	Snaplen  int
-	HexDump  bool
-	Help     bool
-	TimeOut  time.Duration
-	Protocol string
-	Expr     string
+	Device  string
+	Snaplen int
+	HexDump bool
+	Help    bool
+	TimeOut time.Duration
 }
 
 //Option 主配置
 type Option struct {
 	PCAPOption
-	StatsdServer string
-	UDPIP        string
-	UDPPort      int
-	SendCount    int
-	Close        chan struct{}
+	StatsdServer   string
+	UDPIP          string
+	UDPPort        int
+	SendCount      int
+	Close          chan struct{}
+	DiscoverConfig *DiscoverConfig
 }
 
 //Flagparse 解析参数
 func Flagparse() *Option {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: %s [ -i interface ] [ -s snaplen ] [ -h show usage] [ -t timeout] [ -c zmq client number ] [ -zmq zmq server url ] [ -p network protocol] [ expression ] \n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [ -i interface ] [ -s snaplen ] [ -h show usage] [ -t timeout] [ expression ] \n", os.Args[0])
 		os.Exit(1)
 	}
 	flag.Parse()
 	pcapOption := PCAPOption{
-		Device:   *device,
-		Snaplen:  *snaplen,
-		Help:     *help,
-		TimeOut:  time.Duration(*timeout),
-		Protocol: *protocol,
-		Expr:     *expr,
+		Device:  *device,
+		Snaplen: *snaplen,
+		Help:    *help,
+		TimeOut: time.Duration(*timeout),
 	}
 	option := &Option{
-		PCAPOption:   pcapOption,
-		UDPIP:        *udpIP,
-		UDPPort:      *udpPort,
-		StatsdServer: *statsdServer,
+		PCAPOption:     pcapOption,
+		UDPIP:          *udpIP,
+		UDPPort:        *udpPort,
+		StatsdServer:   *statsdServer,
+		DiscoverConfig: GetDiscoverConfig(),
 	}
 	if option.Device == "" {
 		devs, err := pcap.FindAllDevs()
@@ -96,4 +99,52 @@ func Flagparse() *Option {
 	}
 	option.Close = make(chan struct{})
 	return option
+}
+
+//GetDiscoverConfig 获取配置信息
+func GetDiscoverConfig() *DiscoverConfig {
+	var disc DiscoverConfig
+	discoverAddr := os.Getenv("DISCOVER_URL")
+	if discoverAddr == "" {
+		getBaseConfig(&disc)
+		return &disc
+	}
+	res, err := http.Get(discoverAddr)
+	if err != nil {
+		logrus.Errorf("get discover configs error,%s", err.Error())
+		getBaseConfig(&disc)
+		return &disc
+	}
+	if res.Body != nil {
+		defer res.Body.Close()
+		if err := json.NewDecoder(res.Body).Decode(&disc); err != nil {
+			logrus.Errorf("get discover configs error,%s", err.Error())
+			getBaseConfig(&disc)
+			return &disc
+		}
+	}
+	return &disc
+}
+
+func getBaseConfig(disc *DiscoverConfig) {
+	port, _ := strconv.Atoi(os.Getenv("PORT"))
+	protocol := os.Getenv("PROTOCOL")
+	if port == 0 {
+		port = 5000
+	}
+	if protocol == "" {
+		protocol = "http"
+	}
+	disc.Ports = append(disc.Ports, Port{Port: port, Protocol: protocol})
+}
+
+//DiscoverConfig 配置发现
+type DiscoverConfig struct {
+	Ports []Port `json:"base_ports"`
+}
+
+//Port 端口信息
+type Port struct {
+	Port     int    `json:"port"`
+	Protocol string `json:"protocol"`
 }

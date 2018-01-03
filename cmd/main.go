@@ -26,7 +26,6 @@ import (
 	"syscall"
 	"tcm/config"
 	"tcm/net"
-	"tcm/server"
 	"time"
 
 	_ "net/http/pprof"
@@ -39,34 +38,28 @@ func main() {
 	if option.Help {
 		flag.Usage()
 	}
-	decode := net.FindDecode(option)
-	if decode == nil {
-		log.Errorf("protocol %s can not support or decode manange create error", option.Protocol)
-		os.Exit(1)
-	}
-	netUtil := net.Util{
-		Option: option,
-		Decode: decode,
-	}
-	if r := netUtil.Pcap(); r != 0 {
-		os.Exit(r)
+	//多端口支持
+	for _, port := range option.DiscoverConfig.Ports {
+		go func(port config.Port) {
+			decode := net.FindDecode(option, port)
+			if decode == nil {
+				log.Errorf("protocol %s can not support or decode manange create error", port.Protocol)
+				os.Exit(1)
+			}
+			netUtil := net.CreateUtil(port, decode, option)
+			if r := netUtil.Pcap(); r != 0 {
+				os.Exit(r)
+			}
+		}(port)
 	}
 	go httpListener()
-
-	udpserver := server.UDPServer{
-		ListenerHost: "127.0.0.1",
-		ListenerPort: 6666,
-	}
-	errch := make(chan error, 1)
-	go udpserver.Server(errch)
-
 	term := make(chan os.Signal)
 	signal.Notify(term, os.Interrupt, syscall.SIGTERM)
 	select {
 	case <-term:
 		log.Warn("Received SIGTERM, exiting gracefully...")
-	case err := <-errch:
-		log.Error(err.Error())
+		// case err := <-errch:
+		// 	log.Error(err.Error())
 	}
 	close(option.Close)
 	time.Sleep(time.Second * 4)

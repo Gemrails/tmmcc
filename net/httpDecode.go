@@ -24,7 +24,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"tcm/config"
 	"tcm/metric"
@@ -40,16 +39,17 @@ import (
 //HTTPDecode http解码
 type HTTPDecode struct {
 	httpmanager *HTTPManager
+	port        config.Port
 }
 
 //CreateHTTPDecode CreateHTTPDecode
-func CreateHTTPDecode(option *config.Option) *HTTPDecode {
-	manager, err := CreateHTTPManager(option)
+func CreateHTTPDecode(option *config.Option, port config.Port) *HTTPDecode {
+	manager, err := CreateHTTPManager(option, port)
 	if err != nil {
 		log.Errorf("create http manager error,%s", err.Error())
 		return nil
 	}
-	md := &HTTPDecode{httpmanager: manager}
+	md := &HTTPDecode{httpmanager: manager, port: port}
 	return md
 }
 
@@ -65,11 +65,7 @@ func (h *HTTPDecode) Decode(data *SourceData) {
 		log.Errorln("TCP SrcPort is empty, so it may be is not http")
 		return
 	}
-	Port := os.Getenv("PORT")
-	if Port == "" {
-		Port = "5000"
-	}
-	if strings.HasPrefix(data.TCP.SrcPort.String(), Port+"(") { //Response,通过源端口判断
+	if strings.HasPrefix(data.TCP.SrcPort.String(), fmt.Sprintf("%d(", h.port.Port)) { //Response,通过源端口判断
 		//抛弃数据包，只分析报文头部包
 		if string(data.Source[0:4]) == "HTTP" {
 			var rm ResponseMessage
@@ -122,9 +118,9 @@ type ResponseMessage struct {
 }
 
 //CreateHTTPManager 创建httpmanager
-func CreateHTTPManager(option *config.Option) (*HTTPManager, error) {
+func CreateHTTPManager(option *config.Option, port config.Port) (*HTTPManager, error) {
 
-	ms := metric.NewMetric("http", option.UDPIP, option.StatsdServer, option.UDPPort)
+	ms := metric.NewMetric("http", option.UDPIP, option.StatsdServer, option.UDPPort, port.Port)
 	if ms == nil {
 		return nil, fmt.Errorf("create metric store error")
 	}
